@@ -11,6 +11,8 @@ from sklearn.metrics import rand_score  # RI
 from sklearn.metrics import accuracy_score  # ACC
 from sklearn.metrics import f1_score  # F-measure
 from sklearn.metrics import adjusted_rand_score  # ARI
+from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import confusion_matrix
 
 # 数据保存在.csv文件中
 iris = pd.read_csv("dataset/iris.csv", header=0)  # 鸢尾花数据集 Iris  class=3
@@ -26,7 +28,7 @@ glass = pd.read_csv("dataset/glass.csv")  # 玻璃辨识数据集 Glass Identifi
 # pathbased = pd.read_csv("dataset/Pathbased.csv")  # class=3
 # r15 = pd.read_csv("dataset/R15.csv")  # class=15
 # d31 = pd.read_csv("dataset/D31.csv")  # class=6
-df = iris  # 设置要读取的数据集
+df = seeds  # 设置要读取的数据集
 # print(df)
 columns = list(df.columns)  # 获取数据集的第一行，第一行通常为特征名，所以先取出
 features = columns[:len(columns) - 1]  # 数据集的特征名（去除了最后一列，因为最后一列存放的是标签，不是数据）
@@ -107,17 +109,35 @@ def fuzzyCMeansClustering(c, epsilon, m, T):
     # print(membership_mat)
     return cluster_labels, cluster_centers, data, membership_mat
 
+# 调用confusion_matrix函数，使用匈牙利算法，进行标签匹配（Label Matching）
+def align_labels(labels_true, labels_pred):
+    cm = confusion_matrix(labels_true, labels_pred)
+
+    row_ind, col_ind = linear_sum_assignment(-cm)
+
+    mapping = {}
+    for true_label, pred_label in zip(row_ind, col_ind):
+        mapping[pred_label] = true_label
+
+    labels_pred_aligned = np.array(
+        [mapping[label] for label in labels_pred]
+    )
+
+    return labels_pred_aligned
+
 
 # 计算聚类指标
 def clustering_indicators(labels_true, labels_pred):
     if type(labels_true[0]) != int:
-        labels_true = LabelEncoder().fit_transform(df[columns[len(columns) - 1]])  # 如果标签为文本类型，把文本标签转换为数字标签
-    f_measure = f1_score(labels_true, labels_pred, average='macro')  # F值
-    accuracy = accuracy_score(labels_true, labels_pred)  # ACC
+        labels_true = LabelEncoder().fit_transform(df[columns[len(columns)-1]])  # 如果标签为文本类型，把文本标签转换为数字标签
+    # 标签对齐
+    labels_pred_aligned = align_labels(labels_true, labels_pred)
+    f_measure = f1_score(labels_true, labels_pred_aligned, average='macro')  # F值
+    accuracy = accuracy_score(labels_true, labels_pred_aligned)  # ACC
     normalized_mutual_information = normalized_mutual_info_score(labels_true, labels_pred)  # NMI
     rand_index = rand_score(labels_true, labels_pred)  # RI
-    ARI = adjusted_rand_score(labels_true, labels_pred)
-    return f_measure, accuracy, normalized_mutual_information, rand_index, ARI
+    adjusted_rand_index = adjusted_rand_score(labels_true, labels_pred)  # ARI
+    return f_measure, accuracy, normalized_mutual_information, rand_index, adjusted_rand_index
 
 
 # 绘制聚类结果散点图

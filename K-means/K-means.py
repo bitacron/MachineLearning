@@ -4,7 +4,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy import nonzero, array
+from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import f1_score, accuracy_score, normalized_mutual_info_score, rand_score, adjusted_rand_score
+from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 from sklearn.decomposition import PCA
 
@@ -69,16 +71,36 @@ def k_means(data, k, T, epsilon):
     return cluster_labels, centroids
 
 
+# 调用confusion_matrix函数，使用匈牙利算法，进行标签匹配（Label Matching）
+def align_labels(labels_true, labels_pred):
+    cm = confusion_matrix(labels_true, labels_pred)
+
+    row_ind, col_ind = linear_sum_assignment(-cm)
+
+    mapping = {}
+    for true_label, pred_label in zip(row_ind, col_ind):
+        mapping[pred_label] = true_label
+
+    labels_pred_aligned = np.array(
+        [mapping[label] for label in labels_pred]
+    )
+
+    return labels_pred_aligned
+
+
 # 计算聚类指标
 def clustering_indicators(labels_true, labels_pred):
     if type(labels_true[0]) != int:
-        labels_true = LabelEncoder().fit_transform(df[columns[len(columns) - 1]])  # 如果数据集的标签为文本类型，把文本标签转换为数字标签
-    f_measure = f1_score(labels_true, labels_pred, average='macro')  # F值
-    accuracy = accuracy_score(labels_true, labels_pred)  # ACC
+        labels_true = LabelEncoder().fit_transform(df[columns[len(columns)-1]])  # 如果标签为文本类型，把文本标签转换为数字标签
+    # 标签对齐
+    labels_pred_aligned = align_labels(labels_true, labels_pred)
+    f_measure = f1_score(labels_true, labels_pred_aligned, average='macro')  # F值
+    accuracy = accuracy_score(labels_true, labels_pred_aligned)  # ACC
     normalized_mutual_information = normalized_mutual_info_score(labels_true, labels_pred)  # NMI
     rand_index = rand_score(labels_true, labels_pred)  # RI
-    ARI = adjusted_rand_score(labels_true, labels_pred)
-    return f_measure, accuracy, normalized_mutual_information, rand_index, ARI
+    adjusted_rand_index = adjusted_rand_score(labels_true, labels_pred)  # ARI
+    return f_measure, accuracy, normalized_mutual_information, rand_index, adjusted_rand_index
+
 
 
 # 绘制聚类结果散点图
@@ -118,14 +140,7 @@ if __name__ == "__main__":
     # print(labels)
     F_measure, ACC, NMI, RI, ARI = clustering_indicators(original_labels, labels)  # 计算聚类指标
     print("F_measure:", F_measure, "ACC:", ACC, "NMI", NMI, "RI", RI, "ARI", ARI)
-    # print(membership)
     # print(centers)
     # print(dataset)
     draw_cluster(dataset, centers, labels=labels)
 
-# model = KMeans(n_clusters=k)
-# 训练模型
-# model.fit(dataset)
-# 预测全部数据
-# label = model.predict(dataset)
-# print(label)
