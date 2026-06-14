@@ -4,15 +4,15 @@ import numpy as np
 import operator
 import math
 import matplotlib.pyplot as plt
+from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import confusion_matrix
 from sklearn.metrics import normalized_mutual_info_score  # NMI
 from sklearn.metrics import rand_score  # RI
 from sklearn.metrics import accuracy_score  # ACC
 from sklearn.metrics import f1_score  # F-measure
 from sklearn.metrics import adjusted_rand_score  # ARI
-from scipy.optimize import linear_sum_assignment
-from sklearn.metrics import confusion_matrix
 
 # 数据保存在.csv文件中
 iris = pd.read_csv("dataset/iris.csv", header=0)  # 鸢尾花数据集 Iris  class=3
@@ -66,15 +66,15 @@ def calculateClusterCenter(membership_mat, c, m):
 
 
 # 更新隶属度
-def updateMembershipValue(membership_mat, cluster_centers, c):
-    #    p = float(2/(m-1))
+def updateMembershipValue(membership_mat, cluster_centers, c, m):
+    power = 2.0 / (m - 1)
     data = []
     for i in range(n):
         x = list(dataset.iloc[i])  # 取出文件中的每一行数据
         data.append(x)
         distances = [np.linalg.norm(list(map(operator.sub, x, cluster_centers[j]))) for j in range(c)]
         for j in range(c):
-            den = sum([math.pow(float(distances[j] / distances[k]), 2) for k in range(c)])
+            den = sum([math.pow(float(distances[j] / distances[k]), power) for k in range(c)])
             membership_mat[i][j] = float(1 / den)
     return membership_mat, data
 
@@ -98,7 +98,7 @@ def fuzzyCMeansClustering(c, epsilon, m, T):
     while t <= T:  # 最大迭代次数
         cluster_centers = calculateClusterCenter(membership_mat, c, m)  # 根据隶属度矩阵计算聚类中心
         old_membership_mat = membership_mat.copy()  # 保留之前的隶属度矩阵，同于判断迭代条件
-        membership_mat, data = updateMembershipValue(membership_mat, cluster_centers, c)  # 新一轮迭代的隶属度矩阵
+        membership_mat, data = updateMembershipValue(membership_mat, cluster_centers, c, m)  # 新一轮迭代的隶属度矩阵
         cluster_labels = getClusters(membership_mat)  # 获取标签
         if np.linalg.norm(membership_mat - old_membership_mat) < epsilon:
             break
@@ -143,22 +143,26 @@ def clustering_indicators(labels_true, labels_pred):
 # 绘制聚类结果散点图
 def draw_cluster(dataset, centers, labels):
     center_array = array(centers)
+    dataset_array = array(dataset)
     if attributes > 2:
-        dataset = PCA(n_components=2).fit_transform(dataset)  # 如果属性数量大于2，降维
-        center_array = PCA(n_components=2).fit_transform(center_array)  # 如果属性数量大于2，降维
+        # 如果属性数量大于2，降维
+        pca = PCA(n_components=2)
+        dataset_2d = pca.fit_transform(dataset_array)
+        center_array_2d = pca.transform(center_array)
     else:
-        dataset = array(dataset)
+        dataset_2d = array(dataset)
+        center_array_2d = array(centers)  # 添加这一行
     # 做散点图
     label = array(labels)
-    plt.scatter(dataset[:, 0], dataset[:, 1], marker='o', c='black', s=7)  # 原图
+    plt.scatter(dataset_2d[:, 0], dataset_2d[:, 1], marker='o', c='black', s=7)  # 原图
     # plt.show()
     colors = np.array(
         ["#FF0000", "#0000FF", "#00FF00", "#FFFF00", "#00FFFF", "#FF00FF", "#800000", "#008000", "#000080", "#808000",
          "#800080", "#008080", "#444444", "#FFD700", "#008080"])
     # 循换打印k个簇，每个簇使用不同的颜色
     for i in range(c):
-        plt.scatter(dataset[nonzero(label == i), 0], dataset[nonzero(label == i), 1], c=colors[i], s=7, marker='o')
-    plt.scatter(center_array[:, 0], center_array[:, 1], marker='x', color='m', s=30)  # 聚类中心
+        plt.scatter(dataset_2d[nonzero(label == i), 0], dataset_2d[nonzero(label == i), 1], c=colors[i], s=7, marker='o')
+    plt.scatter(center_array_2d[:, 0], center_array_2d[:, 1], marker='x', color='m', s=30)  # 聚类中心
     # 设置x和y坐标轴刻度的标签字体和字号
     # plt.xticks(fontproperties='Times New Roman', fontsize=10.5)
     # plt.yticks(fontproperties='Times New Roman', fontsize=10.5)
