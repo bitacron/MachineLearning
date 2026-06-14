@@ -13,11 +13,13 @@ target/
 .springBeans
 .sts4-cache
 
-### IntelliJ IDEA ###
-.idea
-*.iws
+# JetBrains IDEs (IntelliJ, PyCharm, WebStorm, etc.)
+.idea/
 *.iml
+*.iws
 *.ipr
+out/
+.DS_Store
 
 ### NetBeans ###
 /nbproject/private/
