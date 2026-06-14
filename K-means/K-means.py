@@ -106,22 +106,26 @@ def clustering_indicators(labels_true, labels_pred):
 # 绘制聚类结果散点图
 def draw_cluster(dataset, centers, labels):
     center_array = array(centers)
+    dataset_array = array(dataset)
     if attributes > 2:
-        dataset = PCA(n_components=2).fit_transform(dataset)  # 如果属性数量大于2，降维
-        center_array = PCA(n_components=2).fit_transform(center_array)  # 如果属性数量大于2，降维
+        # 如果属性数量大于2，降维
+        pca = PCA(n_components=2)
+        dataset_2d = pca.fit_transform(dataset_array)
+        center_array_2d = pca.transform(center_array)
     else:
-        dataset = array(dataset)
+        dataset_2d = array(dataset)
+        center_array_2d = array(centers)  # 添加这一行
     # 做散点图
     label = array(labels)
-    plt.scatter(dataset[:, 0], dataset[:, 1], marker='o', c='black', s=7)  # 原图
+    plt.scatter(dataset_2d[:, 0], dataset_2d[:, 1], marker='o', c='black', s=7)  # 原图
     # plt.show()
     colors = np.array(
         ["#FF0000", "#0000FF", "#00FF00", "#FFFF00", "#00FFFF", "#FF00FF", "#800000", "#008000", "#000080", "#808000",
          "#800080", "#008080", "#444444", "#FFD700", "#008080"])
     # 循换打印k个簇，每个簇使用不同的颜色
     for i in range(k):
-        plt.scatter(dataset[nonzero(label == i), 0], dataset[nonzero(label == i), 1], c=colors[i], s=7, marker='o')
-    # plt.scatter(center_array[:, 0], center_array[:, 1], marker='x', color='m', s=30)  # 聚类中心
+        plt.scatter(dataset_2d[nonzero(label == i), 0], dataset_2d[nonzero(label == i), 1], c=colors[i], s=7, marker='o')
+    plt.scatter(center_array_2d[:, 0], center_array_2d[:, 1], marker='x', color='m', s=30)  # 聚类中心
     # 设置x和y坐标轴刻度的标签字体和字号
     # plt.xticks(fontproperties='Times New Roman', fontsize=10.5)
     # plt.yticks(fontproperties='Times New Roman', fontsize=10.5)
