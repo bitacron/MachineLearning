@@ -74,10 +74,21 @@ def load_dataset(dataset_name):
 
     file_path, num_clusters, has_labels, has_header = DATASETS[dataset_name]
 
-    df = pd.read_csv(file_path)
+    # 读取CSV，根据是否有表头决定参数
+    if has_header:
+        df = pd.read_csv(file_path)
+    else:
+        df = pd.read_csv(file_path, header=None)
 
-    features = df.iloc[:, :-1].values
-    labels_true = df.iloc[:, -1].tolist()
+    # 根据是否有标签列处理数据
+    if has_labels:
+        # 有标签：最后一列是标签
+        features = df.iloc[:, :-1].values
+        labels_true = df.iloc[:, -1].tolist()
+    else:
+        # 无标签：所有列都是特征
+        features = df.values
+        labels_true = None
 
     return features, labels_true, num_clusters
 
@@ -296,8 +307,12 @@ if __name__ == "__main__":
     _features, _labels_true, _num_clusters = load_dataset(_dataset_name)
     # 进行FCM算法
     _labels_pred, _cluster_centers, _membership_matrix = fuzzy_c_means_clustering(_features, len(_features), num_clusters=_num_clusters, tol=1e-5, fuzzifier=2.0, max_iter=100)
-    # 计算聚类指标
-    F1, ACC, NMI, RI, ARI = clustering_indicators(_labels_true, _labels_pred)
-    print( f"F1={F1:.6f}  " f"ACC={ACC:.6f}  " f"NMI={NMI:.6f}  " f"RI={RI:.6f}  " f"ARI={ARI:.6f}")
+    if _labels_true is not None:
+        # 有标签：计算聚类指标
+        F1, ACC, NMI, RI, ARI = clustering_indicators(_labels_true, _labels_pred)
+        print( f"F1={F1:.6f}  " f"ACC={ACC:.6f}  " f"NMI={NMI:.6f}  " f"RI={RI:.6f}  " f"ARI={ARI:.6f}")
+    else:
+        # 数据集无标签：无法计算聚类指标
+        print("Dataset without labels，unable to calculate clustering index")
     # 输出散点图
     draw_cluster(_features, _cluster_centers, _labels_pred)
