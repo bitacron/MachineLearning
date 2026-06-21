@@ -21,7 +21,9 @@ from sklearn.decomposition import PCA
 # flame = pd.read_csv("dataset/flame.csv")  # 人工数据集 Eps=0.28 MinPts=4
 jain = pd.read_csv("dataset/jain.csv")  # 人工数据集 Eps = 0.315 MinPts = 4
 spiral = pd.read_csv("dataset/spiral.csv")  # 人工数据集 Eps=0.45 MinPts=4
-df = jain  # 设置要读取的数据集
+panelB = pd.read_csv("dataset/panelB.txt")  # 人工数据集 Eps=0.45 MinPts=4
+panelC = pd.read_csv("dataset/panelC.txt")  # 人工数据集 Eps=0.45 MinPts=4
+df = panelB  # 设置要读取的数据集
 # print(df)
 columns = list(df.columns)  # 获取数据集的第一行，第一行通常为特征名，所以先取出
 features = columns[:len(columns) - 1]  # 数据集的特征名（去除了最后一列，因为最后一列存放的是标签，不是数据）
