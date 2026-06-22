@@ -120,7 +120,7 @@ def load_dataset(dataset_name):
     df = pd.read_csv(config.path, sep=config.sep, header=config.header, skiprows=config.skip_rows, comment=config.comment)
     # 提取真实标签
     if config.label_col is not None:
-        labels_true = df.iloc[:, config.label_col].tolist()
+        labels_true = df.iloc[:, config.label_col].to_numpy()
     else:
         labels_true = None
 
@@ -156,50 +156,67 @@ def initialize_membership_matrix(n, c, random_state=42):
     return membership_matrix
 
 
-def calculate_cluster_center(features, membership_matrix, c, m):
+def calculate_cluster_center(features, membership_matrix, m):
     """
     根据隶属度矩阵计算聚类中心
+    根据公式：v_j = Σ(u_ij^m x_i) / Σ(u_ij^m)，即V = (U^m)^T X / Σ(U^m)
+    Parameters
+    ----------
+    features : ndarray, shape=(n_samples, n_features)
+        数据矩阵 X
+
+    membership_matrix : ndarray, shape=(n_samples, n_clusters)
+        隶属度矩阵 U
+
+    m : float
+        模糊因子
+
+    Returns
+    -------
+    cluster_centers : ndarray, shape=(n_clusters, n_features)
+        聚类中心矩阵 V
     """
-    n = len(features)
-    cluster_centers = []
-    cluster_mem_val_list = list(zip(*membership_matrix))
-    for j in range(c):
-        x = cluster_mem_val_list[j]
-        x_raised = [e ** m for e in x]
-        denominator = sum(x_raised)
-        temp_num = []
-        for i in range(n):
-            data_point = features[i]
-            prod = [x_raised[i] * val for val in data_point]
-            temp_num.append(prod)
-        numerator = map(sum, zip(*temp_num))
-        center = [z / denominator for z in numerator]
-        cluster_centers.append(center)
-    return np.array(cluster_centers)
+    membership_power = membership_matrix ** m
+    # 分子：Σ(u_ij^m * x_i)
+    numerator = membership_power.T @ features
+    # 分母：Σ(u_ij^m)
+    denominator = np.sum(membership_power, axis=0, keepdims=True).T
+    # v_j
+    cluster_centers = numerator / denominator
+    return cluster_centers
 
 
-def update_membership_value(features, membership_matrix, cluster_centers, c, m):
+
+def update_membership_value(features, cluster_centers, m):
     """
     更新隶属度矩阵
+    根据公式：    u_ij = 1 / Σ_k[(d_ij/d_ik)^(2/(m-1))]
+    Parameters
+    ----------
+    features : ndarray, shape=(n_samples, n_features)
+        数据矩阵 X
+
+    cluster_centers : ndarray, shape=(n_clusters, n_features)
+        聚类中心矩阵 V
+
+    m : float
+        模糊因子
+
+    Returns
+    -------
+    membership_matrix : ndarray, shape=(n_samples, n_clusters)
+        更新后的隶属度矩阵 U
     """
-    n = len(features)
+    # 计算每个样本到每个聚类中心的欧氏距离
+    # distances[i, j]表示第 i 个样本到第 j 个聚类中心的距离 d_ij
+    distances = np.linalg.norm(features[:, None, :] - cluster_centers[None, :, :], axis=2)
+    # 防止样本与聚类中心重叠(距离为0)导致后续除零
+    distances = np.fmax(distances, 1e-10)
+    # 公式中的指数
     power = 2.0 / (m - 1)
-
-    for i in range(n):
-        x = features[i]
-        distances = np.array([
-            np.linalg.norm(x - cluster_centers[j])
-            for j in range(c)
-        ])
-        distances = np.maximum(distances, 1e-10)
-
-        for j in range(c):
-            den = sum([
-                (distances[j] / distances[k]) ** power
-                for k in range(c)
-            ])
-            membership_matrix[i][j] = 1.0 / den
-
+    # ratio[i, j, k] = d_ij / d_ik
+    ratio = (distances[:, :, None] / distances[:, None, :])
+    membership_matrix = (1.0 / np.sum(ratio ** power, axis=2))
     return membership_matrix
 
 
@@ -244,11 +261,15 @@ def fuzzy_c_means_clustering(features, num_clusters, tol=1e-5, fuzzifier=2.0, ma
     membership_matrix = initialize_membership_matrix(n_samples, num_clusters)
     cluster_centers = np.zeros((num_clusters, features.shape[1]))  # 提前初始化，避免警告
     iteration = 0
-    while iteration <= max_iter:
-        cluster_centers = calculate_cluster_center(features, membership_matrix, num_clusters, fuzzifier)
+    while iteration < max_iter:
+        # Step1：计算聚类中心
+        cluster_centers = calculate_cluster_center(features, membership_matrix, fuzzifier)
+        # 保存旧隶属度矩阵U
         old_membership_mat = membership_matrix.copy()
-        membership_matrix = update_membership_value(features, membership_matrix, cluster_centers, num_clusters, fuzzifier)
-        if np.linalg.norm(membership_matrix - old_membership_mat) < tol:
+        # Step2：更新隶属度
+        membership_matrix = update_membership_value(features, cluster_centers, fuzzifier)
+        # Step3：判断收敛
+        if np.max(np.abs(membership_matrix - old_membership_mat)) < tol:
             break
         iteration += 1
     cluster_labels = get_clusters(membership_matrix)
@@ -349,10 +370,11 @@ def draw_cluster(features, cluster_centers, labels_pred):
 if __name__ == "__main__":
     # 初始化本次数据集名称
     _dataset_name = "iris"
+    print("加载数据集:   "f"数据集={_dataset_name} ")
     # 加载数据集
     _features, _labels_true, _num_clusters = load_dataset(_dataset_name)
     # 输出样本数n_samples和属性数n_attributes(维度dimensions)
-    print("加载数据集:   "f"样本数量={_features.shape[0]}  " f"属性数量(维度)={_features.shape[1]}")
+    print(f"样本数量={_features.shape[0]}  " f"属性数量(维度)={_features.shape[1]}")
 
     _tol = 1e-5
     _fuzzifier = 2.0
