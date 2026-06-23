@@ -1,150 +1,399 @@
-import time
+"""
+KMeans.py
 
-import pandas as pd
+K-means聚类算法实现
+
+"""
+
+import time
+from collections import namedtuple
+
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy import nonzero, array
+import pandas as pd
 from scipy.optimize import linear_sum_assignment
-from sklearn.metrics import f1_score, accuracy_score, normalized_mutual_info_score, rand_score, adjusted_rand_score
-from sklearn.metrics import confusion_matrix
-from sklearn.preprocessing import LabelEncoder
 from sklearn.decomposition import PCA
+from sklearn.metrics import (
+    accuracy_score,
+    adjusted_rand_score,
+    confusion_matrix,
+    f1_score,
+    normalized_mutual_info_score,
+    rand_score,
+)
+from sklearn.preprocessing import LabelEncoder
 
-# 数据保存在.csv文件中
-iris = pd.read_csv("dataset/Iris.csv", header=0)  # 鸢尾花数据集 Iris  class=3
-wine = pd.read_csv("dataset/wine.csv")  # 葡萄酒数据集 Wine  class=3
-seeds = pd.read_csv("dataset/seeds.csv")  # 小麦种子数据集 seeds  class=3
-wdbc = pd.read_csv("dataset/wdbc.csv")  # 威斯康星州乳腺癌数据集 Breast Cancer Wisconsin (Diagnostic)  class=2
-glass = pd.read_csv("dataset/glass.csv")  # 玻璃辨识数据集 Glass Identification  class=6
-aggregation = pd.read_csv("dataset/aggregation.csv")  # class=7
-flame = pd.read_csv("dataset/flame.csv")  # class=2
-jain = pd.read_csv("dataset/jain.csv")  # class=2
-spiral = pd.read_csv("dataset/spiral.csv")  # class=3
-df = iris  # 设置要读取的数据集
-# print(df)
+# ==========================================================
+# 数据集配置
+# ==========================================================
 
-columns = list(df.columns)  # 获取数据集的第一行，第一行通常为特征名，所以先取出
-features = columns[:len(columns) - 1]  # 数据集的特征名（去除了最后一列，因为最后一列存放的是标签，不是数据）
-dataset = df[features]  # 预处理之后的数据，去除掉了第一行的数据（因为其为特征名，如果数据第一行不是特征名，可跳过这一步）
-attributes = len(df.columns) - 1  # 属性数量（数据集维度）
-original_labels = list(df[columns[-1]])  # 原始标签
+# path        : 数据集路径
+# clusters    : 聚类簇数
+# label_col   : 标签列索引(None表示无标签)
+# id_col      : ID列索引(None表示无ID列)
+# header      : 表头行(0表示第一行为表头，None表示无表头)
+# sep         : 分隔符
+# skiprows    : 跳过前几行
+# comment     : 注释符(None表示无注释符)
+
+Dataset = namedtuple(
+    "Dataset",
+    [
+        "path",
+        "clusters",
+        "label_col",
+        "id_col",
+        "header",
+        "sep",
+        "skip_rows",
+        "comment"
+    ]
+)
+
+DATASETS = {
+    # ==========================
+    # UCI数据集
+    # ==========================
+
+    # 最后一列是标签，英文逗号作为分割符，无特征名表头
+    "iris": Dataset("dataset/uci/iris.data", 3, -1, None, None, ",", 0, None),
+    # 最后一列是标签，空格作为分割符，无特征名表头
+    "seeds": Dataset("dataset/uci/seeds_dataset.txt", 3, -1, None, None, r"\s+", 0, None),
+    # 最后一列是标签，英文逗号作为分割符，无特征名表头
+    "glass": Dataset("dataset/uci/glass.data", 6, -1, 0, None, ",", 0, None),
+    # 第一列是标签，英文逗号作为分割符，无特征名表头
+    "wine": Dataset("dataset/uci/wine.data", 3, 0, None, None, ",", 0, None),
+    # 第一列是ID，第二列是标签，英文逗号作为分割符，无特征名表头
+    "wdbc": Dataset("dataset/uci/wdbc.data", 2, 1, 0, None, ",", 0, None),
+    # 第一列是ID，第二列是标签，英文逗号作为分割符，无特征名表头
+    "ecoli": Dataset("dataset/uci/ecoli.data", 8, -1, 0, None, r"\s+", 0, None),
+
+    # ==========================
+    # 人工合成数据集
+    # ==========================
+
+    # 空格分隔，最后一列是标签
+    "flame": Dataset("dataset/synthetic/Flame.txt", 2, -1, None, None, ",", 0, None),
+    "jain": Dataset("dataset/synthetic/Jain.txt", 2, -1, None, None, ",", 0, None),
+    "spiral": Dataset("dataset/synthetic/Spiral.txt", 3, -1, None, None, ",", 0, None),
+    "panelB": Dataset("dataset/synthetic/panelB.txt", 3, None, None, None, ",", 0, None),
+    "panelC": Dataset("dataset/synthetic/panelC.txt", 3, None, None, None, ",", 0, None),
+    "r15": Dataset("dataset/synthetic/R15.txt", 15, -1, None, None, ",", 0, None),
+    "d31": Dataset("dataset/synthetic/D31.txt", 31, -1, None, None, ",", 0, None),
+    "aggregation": Dataset("dataset/synthetic/Aggregation.txt", 7, -1, None, None, ",", 0, None),
+    "compound": Dataset("dataset/synthetic/Compound.txt", 6, -1, None, None, ",", 0, None),
+    "pathbased": Dataset("dataset/synthetic/Pathbased.txt", 3, -1, None, None, ",", 0, None),
+}
 
 
-def initialize_centroids(data, k):
-    # 从数据集中随机选择k个点作为初始质心
-    centers = data[np.random.choice(data.shape[0], k, replace=False)]
-    return centers
+# ==========================================================
+# 数据加载
+# ==========================================================
+
+def load_dataset(dataset_name):
+    """
+    加载数据集
+
+    Parameters
+    ----------
+    dataset_name : str
+        数据集名称
+
+    Returns
+    -------
+    features : ndarray
+        特征矩阵
+
+    labels_true : list or None
+        真实标签
+
+    num_clusters : int
+        聚类簇数
+    """
+
+    config = DATASETS[dataset_name]
+    df = pd.read_csv(config.path, sep=config.sep, header=config.header, skiprows=config.skip_rows,comment=config.comment)
+
+    # 提取真实标签
+    if config.label_col is not None:
+        labels_true = df.iloc[:, config.label_col].to_numpy()
+    else:
+        labels_true = None
+
+    # 构造需要删除的列(包括标签列、id列)
+    drop_cols = []
+
+    if config.id_col is not None:
+        drop_cols.append(df.columns[config.id_col])
+
+    if config.label_col is not None:
+        drop_cols.append(df.columns[config.label_col])
+
+    # 得到特征矩阵
+    if drop_cols:
+        # 一次性删除，防止错乱
+        features = df.drop(columns=drop_cols).values
+    else:
+        features = df.values
+
+    return features, labels_true, config.clusters
 
 
-def get_clusters(data, centroids):
-    # 计算数据点与质心之间的距离，并将数据点分配给最近的质心
-    distances = np.linalg.norm(data[:, np.newaxis] - centroids, axis=2)
-    cluster_labels = np.argmin(distances, axis=1)
-    return cluster_labels
+# ==========================================================
+# K-means核心算法
+# ==========================================================
+
+def initialize_centroids(features, num_clusters, random_state=42):
+    """
+    初始化聚类中心（从数据集中随机选择k个点作为初始质心）
+
+    Parameters
+    ----------
+    features : ndarray, shape=(n_samples, n_features)
+        数据矩阵 X
+
+    num_clusters : int
+        聚类簇数 k
+
+    random_state : int, default=42
+        随机种子
+
+    Returns
+    -------
+    centroids : ndarray, shape=(num_clusters, n_features)
+        初始聚类中心
+    """
+    rng = np.random.default_rng(random_state)
+    indices = rng.choice(features.shape[0], num_clusters, replace=False)
+    return features[indices].copy()
 
 
-def update_centroids(data, cluster_labels, k):
-    # 计算每个簇的新质心，即簇内数据点的均值
-    new_centroids = np.array([data[cluster_labels == i].mean(axis=0) for i in range(k)])
-    return new_centroids
+def assign_clusters(features, centroids):
+    """
+    将数据点分配给最近的聚类中心
+
+    Parameters
+    ----------
+    features : ndarray, shape=(n_samples, n_features)
+        数据矩阵 X
+
+    centroids : ndarray, shape=(num_clusters, n_features)
+        聚类中心矩阵 V
+
+    Returns
+    -------
+    cluster_labels : ndarray, shape=(n_samples,)
+        每个样本的聚类标签
+    """
+    # 计算每个样本到每个聚类中心的欧氏距离
+    distances = np.linalg.norm(features[:, None, :] - centroids[None, :, :], axis=2)
+    # 返回距离最近的聚类中心索引
+    return np.argmin(distances, axis=1)
 
 
-def k_means(data, k, T, epsilon):
-    start = time.time()  # 开始时间，计时
-    # 初始化质心
-    centroids = initialize_centroids(data, k)
-    t = 0
-    while t <= T:
-        # 分配簇
-        cluster_labels = get_clusters(data, centroids)
+def calculate_centroids(features, cluster_labels, num_clusters):
+    """
+    计算每个簇的新质心（簇内数据点的均值）
 
-        # 更新质心
-        new_centroids = update_centroids(data, cluster_labels, k)
+    Parameters
+    ----------
+    features : ndarray, shape=(n_samples, n_features)
+        数据矩阵 X
 
-        # 检查收敛条件
-        if np.linalg.norm(new_centroids - centroids) < epsilon:
+    cluster_labels : ndarray, shape=(n_samples,)
+        聚类标签
+
+    num_clusters : int
+        聚类簇数 k
+
+    Returns
+    -------
+    centroids : ndarray, shape=(num_clusters, n_features)
+        更新后的聚类中心
+    """
+    centroids = np.zeros((num_clusters, features.shape[1]))
+    for i in range(num_clusters):
+        # 获取属于第i簇的所有样本
+        cluster_points = features[cluster_labels == i]
+        if len(cluster_points) > 0:
+            centroids[i] = cluster_points.mean(axis=0)
+        else:
+            # 如果某个簇没有样本，重新随机初始化（避免空簇）
+            rng = np.random.default_rng()
+            centroids[i] = features[rng.choice(features.shape[0])]
+    return centroids
+
+
+def kmeans_clustering(features, num_clusters, tol=1e-5, max_iter=100, random_state=42):
+    """
+    K-means聚类主函数
+
+    Parameters
+    ----------
+    features : ndarray
+        特征矩阵(符号：X)
+
+    num_clusters : int
+        聚类簇数(符号：k)
+
+    tol : float, default=1e-5
+        终止阈值容差tolerance(符号：epsilon)
+
+    max_iter : int, default=100
+        最大迭代数(符号：T)
+
+    random_state : int, default=42
+        随机种子
+
+    Returns
+    -------
+    cluster_labels : ndarray
+        聚类标签
+
+    cluster_centers : ndarray
+        聚类中心
+    """
+    n_samples = len(features)  # 样本总数(符号：n)
+    start = time.time()
+    cluster_labels = np.zeros((num_clusters, features.shape[1]))  # 提前初始化，避免警告
+    # Step1: 初始化聚类中心
+    centroids = initialize_centroids(features, num_clusters, random_state)
+    iteration = 0
+
+    while iteration < max_iter:
+        # Step2: 分配样本到最近的聚类中心
+        cluster_labels = assign_clusters(features, centroids)
+
+        # Step3: 保存旧聚类中心
+        old_centroids = centroids.copy()
+
+        # Step4: 更新聚类中心
+        centroids = calculate_centroids(features, cluster_labels, num_clusters)
+
+        # Step5: 判断收敛
+        if np.linalg.norm(centroids - old_centroids) < tol:
             break
-        centroids = new_centroids
-        print("第", t, "次迭代")
-        t += 1
-    print("用时：{0}".format(time.time() - start))
+
+        iteration += 1
+
+    elapsed_time = time.time() - start
+    print(f"总计迭代次数: {iteration};  耗时: {elapsed_time:.4f} s")
+
     return cluster_labels, centroids
 
 
-# 调用confusion_matrix函数，使用匈牙利算法，进行标签匹配（Label Matching）
+# ==========================================================
+# 标签对齐
+# ==========================================================
+
 def align_labels(labels_true, labels_pred):
+    """
+    使用匈牙利算法进行标签匹配
+    """
     cm = confusion_matrix(labels_true, labels_pred)
-
     row_ind, col_ind = linear_sum_assignment(-cm)
-
     mapping = {}
     for true_label, pred_label in zip(row_ind, col_ind):
         mapping[pred_label] = true_label
 
-    labels_pred_aligned = np.array(
-        [mapping[label] for label in labels_pred]
-    )
+    labels_pred_aligned = np.array([
+        mapping[label]
+        for label in labels_pred
+    ])
 
     return labels_pred_aligned
 
 
-# 计算聚类指标
+# ==========================================================
+# 聚类评价指标
+# ==========================================================
+
 def clustering_indicators(labels_true, labels_pred):
-    if type(labels_true[0]) != int:
-        labels_true = LabelEncoder().fit_transform(df[columns[len(columns)-1]])  # 如果标签为文本类型，把文本标签转换为数字标签
-    # 标签对齐
+    """
+    计算聚类评价指标
+    """
+
+    if isinstance(labels_true[0], str):
+        # 真实标签转化为数字标签
+        labels_true = LabelEncoder().fit_transform(labels_true)
+
     labels_pred_aligned = align_labels(labels_true, labels_pred)
-    f_measure = f1_score(labels_true, labels_pred_aligned, average='macro')  # F值
-    accuracy = accuracy_score(labels_true, labels_pred_aligned)  # ACC
-    normalized_mutual_information = normalized_mutual_info_score(labels_true, labels_pred)  # NMI
-    rand_index = rand_score(labels_true, labels_pred)  # RI
-    adjusted_rand_index = adjusted_rand_score(labels_true, labels_pred)  # ARI
-    return f_measure, accuracy, normalized_mutual_information, rand_index, adjusted_rand_index
+
+    f1 = f1_score(labels_true, labels_pred_aligned, average="macro")
+    accuracy = accuracy_score(labels_true, labels_pred_aligned)
+    nmi = normalized_mutual_info_score(labels_true, labels_pred)
+    ri = rand_score(labels_true, labels_pred)
+    ari = adjusted_rand_score(labels_true, labels_pred)
+
+    return f1, accuracy, nmi, ri, ari
 
 
+# ==========================================================
+# 聚类结果可视化
+# ==========================================================
 
-# 绘制聚类结果散点图
-def draw_cluster(dataset, centers, labels):
-    center_array = array(centers)
-    dataset_array = array(dataset)
-    if attributes > 2:
-        # 如果属性数量大于2，降维
+def draw_cluster(features, cluster_centers, labels_pred):
+    """
+    绘制聚类结果散点图
+    """
+
+    features = np.asarray(features)
+    cluster_centers = np.asarray(cluster_centers)
+
+    if features.shape[1] > 2:
         pca = PCA(n_components=2)
-        dataset_2d = pca.fit_transform(dataset_array)
-        center_array_2d = pca.transform(center_array)
+        features_2d = pca.fit_transform(features)
+        cluster_centers_2d = pca.transform(cluster_centers)
     else:
-        dataset_2d = array(dataset)
-        center_array_2d = array(centers)  # 添加这一行
+        features_2d = features
+        cluster_centers_2d = cluster_centers
+
+    plt.figure(figsize=(8, 6))
     # 做散点图
-    label = array(labels)
-    plt.scatter(dataset_2d[:, 0], dataset_2d[:, 1], marker='o', c='black', s=7)  # 原图
-    # plt.show()
-    colors = np.array(
-        ["#FF0000", "#0000FF", "#00FF00", "#FFFF00", "#00FFFF", "#FF00FF", "#800000", "#008000", "#000080", "#808000",
-         "#800080", "#008080", "#444444", "#FFD700", "#008080"])
-    # 循换打印k个簇，每个簇使用不同的颜色
-    for i in range(k):
-        plt.scatter(dataset_2d[nonzero(label == i), 0], dataset_2d[nonzero(label == i), 1], c=colors[i], s=7, marker='o')
-    plt.scatter(center_array_2d[:, 0], center_array_2d[:, 1], marker='x', color='m', s=30)  # 聚类中心
+    plt.scatter(features_2d[:, 0], features_2d[:, 1], marker='o', c='black', s=7)  # 原图
+    plt.show()
+    plt.scatter(features_2d[:, 0], features_2d[:, 1], c=labels_pred, cmap="nipy_spectral", s=7, marker="o")
+
+    plt.scatter(cluster_centers_2d[:, 0], cluster_centers_2d[:, 1], marker="x", color="m", s=30)
     # 设置x和y坐标轴刻度的标签字体和字号
     # plt.xticks(fontproperties='Times New Roman', fontsize=10.5)
     # plt.yticks(fontproperties='Times New Roman', fontsize=10.5)
     # plt.xlabel("x - label", fontdict={'family': 'Times New Roman', 'size': 10.5}, loc="right")
     # plt.ylabel("y - label", fontdict={'family': 'Times New Roman', 'size': 10.5}, loc="top")
+    plt.title("K-means Clustering Result")
+
     plt.show()
 
 
-if __name__ == "__main__":
-    k = 3  # 聚类簇数
-    T = 100  # 最大迭代数
-    n = len(dataset)  # 样本数
-    epsilon = 1e-5
-    # 预测全部数据
-    labels, centers = k_means(np.array(dataset), k, T, epsilon)
-    # print(labels)
-    F_measure, ACC, NMI, RI, ARI = clustering_indicators(original_labels, labels)  # 计算聚类指标
-    print("F_measure:", F_measure, "ACC:", ACC, "NMI", NMI, "RI", RI, "ARI", ARI)
-    # print(centers)
-    # print(dataset)
-    draw_cluster(dataset, centers, labels=labels)
+# ==========================================================
+# 主程序
+# ==========================================================
 
+if __name__ == "__main__":
+    # 初始化本次数据集名称
+    _dataset_name = "seeds"
+    print("加载数据集:   "f"数据集={_dataset_name} ")
+    # 加载数据集
+    _features, _labels_true, _num_clusters = load_dataset(_dataset_name)
+    # 输出样本数n_samples和属性数n_attributes(维度dimensions)
+    print(f"样本数量={_features.shape[0]}  " f"属性数量(维度)={_features.shape[1]}")
+
+    _tol = 1e-5
+    _max_iter = 100
+    _random_state = 42
+    print("开始K-means:   " f"k={_num_clusters}  " f"n={len(_features)}   " f"epsilon={_tol}  " f"T={_max_iter}  " f"random_state={_random_state}")
+
+    # 进行K-means算法
+    _labels_pred, _cluster_centers = kmeans_clustering(_features, _num_clusters, _tol, _max_iter, _random_state)
+
+    # 开始计算聚类指标
+    if _labels_true is not None:
+        # 有标签：计算聚类指标
+        F1, ACC, NMI, RI, ARI = clustering_indicators(_labels_true, _labels_pred)
+        print("聚类指标: " f"F1={F1:.6f}  " f"ACC={ACC:.6f}  " f"NMI={NMI:.6f}  " f"RI={RI:.6f}  " f"ARI={ARI:.6f}")
+    else:
+        # 数据集无标签：无法计算聚类指标
+        print("Dataset without labels，unable to calculate clustering index")
+
+    # 输出散点图
+    draw_cluster(_features, _cluster_centers, _labels_pred)
