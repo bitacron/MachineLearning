@@ -208,14 +208,27 @@ def density_based_clustering(features, eps, min_samples, scale=True):
 # 标签对齐
 # ==========================================================
 
-def align_labels(labels_true, labels_pred):
+def align_labels(labels_true, labels_pred, noise_label=None):
     """
     使用匈牙利算法对齐标签。
-    支持：
-        1. 聚类数量 != 真实类别数量
-        2. 存在噪声类
-    """
 
+    参数
+    ----------
+    labels_true : ndarray
+        真实标签。
+
+    labels_pred : ndarray
+        预测标签。
+
+    noise_label : int or None
+        噪声类别标签。
+        如果不为 None，则禁止该类别参与匈牙利匹配。
+
+    返回
+    -------
+    labels_pred_aligned : ndarray
+        对齐后的预测标签。
+    """
     from sklearn.metrics import confusion_matrix
     from scipy.optimize import linear_sum_assignment
 
@@ -234,41 +247,64 @@ def align_labels(labels_true, labels_pred):
     for r, c in zip(row_ind, col_ind):
         pred_label = labels[c]
         true_label = labels[r]
+
+        # 禁止噪声参与匹配
+        if noise_label is not None and pred_label == noise_label:
+            continue
+
         mapping[pred_label] = true_label
 
-    return np.array(
-        [mapping.get(label, label) for label in labels_pred]
+    labels_pred_aligned = np.array(
+        [
+            mapping.get(label, label)
+            for label in labels_pred
+        ]
     )
 
+    return labels_pred_aligned
 # ==========================================================
 # 聚类评价指标
 # ==========================================================
 
 def clustering_indicators(labels_true, labels_pred):
+    """
+    计算聚类评价指标。
 
+    对于 DBSCAN：
+        1. 噪声点参与评价；
+        2. 预测为噪声视为错误；
+        3. 噪声类别不参与匈牙利匹配。
+    """
     if isinstance(labels_true[0], str):
         labels_true = LabelEncoder().fit_transform(labels_true)
 
     labels_true = labels_true.copy()
     labels_pred = labels_pred.copy()
 
+    noise_label = None
+
     #
-    # 把噪声当成一个新类别
+    # 将噪声映射为新的类别
     #
     if np.any(labels_pred == NOISE):
-        noise_label = max(
-            np.max(labels_true),
-            np.max(labels_pred)
-        ) + 1
+        noise_label = (
+            max(
+                np.max(labels_true),
+                np.max(labels_pred)
+            ) + 1
+        )
 
-        labels_pred[labels_pred == NOISE] = noise_label
+        labels_pred[
+            labels_pred == NOISE
+        ] = noise_label
 
     #
     # 标签对齐
     #
     labels_pred_aligned = align_labels(
         labels_true,
-        labels_pred
+        labels_pred,
+        noise_label
     )
 
     #
@@ -307,7 +343,6 @@ def clustering_indicators(labels_true, labels_pred):
         rand_index,
         adjusted_rand_index
     )
-
 # ==========================================================
 # 可视化
 # ==========================================================
