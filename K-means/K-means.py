@@ -112,6 +112,7 @@ def load_dataset(dataset_name):
     """
 
     config = DATASETS[dataset_name]
+    print("加载数据集:   "f"数据集={dataset_name} ")
     df = pd.read_csv(config.path, sep=config.sep, header=config.header, skiprows=config.skip_rows,comment=config.comment)
 
     # 提取真实标签
@@ -136,6 +137,8 @@ def load_dataset(dataset_name):
     else:
         features = df.values
 
+    # 输出样本数n_samples和属性数n_attributes(维度dimensions)
+    print(f"样本数量={features.shape[0]}  " f"属性数量(维度)={features.shape[1]}")
     return features, labels_true, config.clusters
 
 
@@ -253,7 +256,6 @@ def kmeans_clustering(features, num_clusters, tol=1e-5, max_iter=100, random_sta
     cluster_centers : ndarray
         聚类中心
     """
-    n_samples = len(features)  # 样本总数(符号：n)
     start = time.time()
     cluster_labels = np.zeros((num_clusters, features.shape[1]))  # 提前初始化，避免警告
     # Step1: 初始化聚类中心
@@ -372,11 +374,8 @@ def draw_cluster(features, cluster_centers, labels_pred):
 if __name__ == "__main__":
     # 初始化本次数据集名称
     _dataset_name = "seeds"
-    print("加载数据集:   "f"数据集={_dataset_name} ")
     # 加载数据集
     _features, _labels_true, _num_clusters = load_dataset(_dataset_name)
-    # 输出样本数n_samples和属性数n_attributes(维度dimensions)
-    print(f"样本数量={_features.shape[0]}  " f"属性数量(维度)={_features.shape[1]}")
 
     _tol = 1e-5
     _max_iter = 100

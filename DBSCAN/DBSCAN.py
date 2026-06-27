@@ -28,37 +28,37 @@ Dataset = namedtuple(
     "Dataset",
     [
         "path",
-        "clusters",
+        "n_clusters",
         "label_col",
         "id_col",
         "header",
         "sep",
         "skip_rows",
-        "comment"
+        "comment",
+        "eps",
+        "min_samples",
     ]
 )
-
 DATASETS = {
     # UCI数据集
-    "iris": Dataset("dataset/uci/iris.data", 3, -1, None, None, ",", 0, None),
-    "bezdekIris": Dataset("dataset/uci/bezdekIris.data", 3, -1, None, None, ",", 0, None),
-    "seeds": Dataset("dataset/uci/seeds_dataset.txt", 3, -1, None, None, r"\s+", 0, None),
-    "glass": Dataset("dataset/uci/glass.data", 6, -1, 0, None, ",", 0, None),
-    "wine": Dataset("dataset/uci/wine.data", 3, 0, None, None, ",", 0, None),
-    "wdbc": Dataset("dataset/uci/wdbc.data", 2, 1, 0, None, ",", 0, None),
-    "ecoli": Dataset("dataset/uci/ecoli.data", 8, -1, 0, None, r"\s+", 0, None),
+    "iris": Dataset("dataset/uci/iris.data", 3, -1, None, None, ",", 0, None, 0.14, 8),
+    "bezdekIris": Dataset("dataset/uci/bezdekIris.data", 3, -1, None, None, ",", 0, None, 0.14, 8),
+    "seeds": Dataset("dataset/uci/seeds_dataset.txt", 3, -1, None, None, r"\s+", 0, None, 0.17, 8),
+    "glass": Dataset("dataset/uci/glass.data", 6, -1, 0, None, ",", 0, None, 0.45, 5),
+    "wine": Dataset("dataset/uci/wine.data", 3, 0, None, None, ",", 0, None, 0.42, 10),
+    "wdbc": Dataset("dataset/uci/wdbc.data", 2, 1, 0, None, ",", 0, None, 0.27, 7),
 
     # 人工合成数据集
-    "flame": Dataset("dataset/synthetic/flame.txt", 2, -1, None, None, ",", 0, None),
-    "jain": Dataset("dataset/synthetic/jain.txt", 2, -1, None, None, ",", 0, None),
-    "spiral": Dataset("dataset/synthetic/spiral.txt", 3, -1, None, None, ",", 0, None),
-    "panelB": Dataset("dataset/synthetic/panelB.txt", 3, None, None, None, ",", 0, None),
-    "panelC": Dataset("dataset/synthetic/panelC.txt", 3, None, None, None, ",", 0, None),
-    "r15": Dataset("dataset/synthetic/R15.txt", 15, -1, None, None, ",", 0, None),
-    "d31": Dataset("dataset/synthetic/D31.txt", 31, -1, None, None, ",", 0, None),
-    "aggregation": Dataset("dataset/synthetic/aggregation.txt", 7, -1, None, None, ",", 0, None),
-    "compound": Dataset("dataset/synthetic/compound.txt", 6, -1, None, None, ",", 0, None),
-    "pathbased": Dataset("dataset/synthetic/pathbased.txt", 3, -1, None, None, ",", 0, None),
+    "flame": Dataset("dataset/synthetic/flame.txt", 2, -1, None, None, ",", 0, None, 0.28, 4),
+    "jain": Dataset("dataset/synthetic/jain.txt", 2, -1, None, None, ",", 0, None, 0.315, 4),
+    "spiral": Dataset("dataset/synthetic/spiral.txt", 3, -1, None, None, ",", 0, None, 0.45, 4),
+    "panelB": Dataset("dataset/synthetic/panelB.txt", 3, None, None, None, ",", 0, None, 0.45, 4),
+    "panelC": Dataset("dataset/synthetic/panelC.txt", 3, None, None, None, ",", 0, None, 0.45, 4),
+    "aggregation": Dataset("dataset/synthetic/aggregation.txt", 7, -1, None, None, ",", 0, None, 0.18, 4),
+    "r15": Dataset("dataset/synthetic/R15.txt", 15, -1, None, None, ",", 0, None, None, None),
+    "d31": Dataset("dataset/synthetic/D31.txt", 31, -1, None, None, ",", 0, None, None, None),
+    "compound": Dataset("dataset/synthetic/compound.txt", 6, -1, None, None, ",", 0, None, None, None),
+    "pathbased": Dataset("dataset/synthetic/pathbased.txt", 3, -1, None, None, ",", 0, None, None, None),
 }
 
 
@@ -72,13 +72,9 @@ def load_dataset(dataset_name):
     """
     config = DATASETS[dataset_name]
 
-    df = pd.read_csv(
-        config.path,
-        sep=config.sep,
-        header=config.header,
-        skiprows=config.skip_rows,
-        comment=config.comment
-    )
+    print("加载数据集:   " f"数据集={_dataset_name}")
+
+    df = pd.read_csv(config.path, sep=config.sep, header=config.header, skiprows=config.skip_rows, comment=config.comment)
 
     if config.label_col is not None:
         labels_true = df.iloc[:, config.label_col].to_numpy()
@@ -98,7 +94,9 @@ def load_dataset(dataset_name):
     else:
         features = df.values
 
-    return features.astype(np.float32), labels_true, config.clusters
+    print(f"样本数量={features.shape[0]}   " f"属性数量(维度)={features.shape[1]}   " f"真实类别数={config.n_clusters}")
+    print(f"eps={config.eps}   min_samples={config.min_samples}")
+    return features, labels_true, config.eps, config.min_samples
 
 
 # ==========================================================
@@ -391,44 +389,13 @@ def draw_cluster(features, labels_pred, eps=None, min_samples=None):
 
 if __name__ == "__main__":
 
-    # ==========================================================
-    # 数据集和参数配置
-    # ==========================================================
-
-    # DBSCAN参数配置（针对不同数据集）
-    DBSCAN_PARAMS = {
-        "bezdekIris": {"eps": 0.14, "min_samples": 8},
-        "iris": {"eps": 0.14, "min_samples": 8},
-        "seeds": {"eps": 0.17, "min_samples": 8},
-        "wine": {"eps": 0.42, "min_samples": 10},
-        "wdbc": {"eps": 0.27, "min_samples": 7},
-        "glass": {"eps": 0.45, "min_samples": 5},
-        "aggregation": {"eps": 0.18, "min_samples": 4},
-        "flame": {"eps": 0.28, "min_samples": 4},
-        "jain": {"eps": 0.315, "min_samples": 4},
-        "spiral": {"eps": 0.315, "min_samples": 4},
-        "panelB": {"eps": 0.45, "min_samples": 4},
-        "panelC": {"eps": 0.45, "min_samples": 4},
-    }
-
     # 选择数据集
     _dataset_name = "spiral"
 
-    print("加载数据集:   " f"数据集={_dataset_name}")
-
-    _features, _labels_true, _num_clusters_truth = load_dataset(_dataset_name)
-
-    print(f"样本数量={_features.shape[0]}   " f"属性数量(维度)={_features.shape[1]}   " f"真实类别数={_num_clusters_truth}")
-
-    # 获取DBSCAN参数
-    _params = DBSCAN_PARAMS.get(_dataset_name, {"eps": 0.3, "min_samples": 4})
-    _eps = _params["eps"]
-    _min_samples = _params["min_samples"]
-
-    print(f"eps={_eps}   min_samples={_min_samples}")
+    _features, _labels_true, _eps, _min_samples = load_dataset(_dataset_name)
 
     # 执行DBSCAN聚类
-    _labels_pred, _num_clusters = density_based_clustering(_features, eps=_eps, min_samples=_min_samples, scale=False)
+    _labels_pred, _num_clusters = density_based_clustering(_features, eps=_eps, min_samples=_min_samples, scale=True)
 
     print(f"聚类数量={_num_clusters}")
 

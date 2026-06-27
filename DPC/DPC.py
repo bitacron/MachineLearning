@@ -77,6 +77,7 @@ def load_dataset(dataset_name):
 
     config = DATASETS[dataset_name]
 
+    print("加载数据集:   " f"数据集={dataset_name}")
     df = pd.read_csv(config.path, sep=config.sep, header=config.header, skiprows=config.skip_rows, comment=config.comment)
 
     if config.label_col is not None:
@@ -97,6 +98,7 @@ def load_dataset(dataset_name):
     else:
         features = df.values
 
+    print(f"样本数量={features.shape[0]}   " f"属性数量(维度)={features.shape[1]}")
     return features.astype(np.float32), labels_true, config.clusters
 
 
@@ -340,17 +342,14 @@ def draw_cluster(features, centers, labels_pred):
 
 if __name__ == "__main__":
 
-    _dataset_name = "bezdekIris"
+    _dataset_name = "spiral"
+    # 是否自动选取聚类中心
+    AUTO_SELECT_CENTERS = True
 
-    print("加载数据集:   " f"数据集={_dataset_name}")
+    _features, _labels_true, _dataset_num_clusters = load_dataset(_dataset_name)
 
-    _features, _labels_true, _num_clusters = load_dataset(_dataset_name)
-
-    print(f"样本数量={_features.shape[0]}   " f"属性数量(维度)={_features.shape[1]}")
-
-    # None：自动选中心（论文原始方式）
-    # _num_clusters：固定K
-    _num_clusters = None
+    # _num_clusters：固定K；None：自动选中心（论文原始方式）
+    _num_clusters = None if AUTO_SELECT_CENTERS else _dataset_num_clusters
 
     _labels_pred, _centers, _rho, _deltas, _dc = density_peak_clustering( _features, _num_clusters)
 
